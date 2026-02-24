@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DPC機能評価係数Ⅱ比較</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+
+<style>
+body { font-family: sans-serif; margin:20px; background-color: #f9f9f9; }
+.container { display:flex; gap:30px; }
+.panel { width:50%; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+select { width:100%; padding:10px; margin-bottom:12px; border: 1px solid #ddd; border-radius: 4px; }
+canvas { max-width:100%; height: 500px !important; }
+h2 { text-align: center; color: #333; margin-bottom: 30px; }
+h3 { margin-top: 0; padding-bottom: 10px; border-bottom: 2px solid #eee; font-size: 1.2em; }
+</style>
+</head>
+
+<body>
+
+<h2>DPC 機能評価係数Ⅱ及び救急補正係数の比較（2025年版）</h2>
+<h3>基礎係数：大学病院本院群（旧Ⅰ群）1.1182 特定病院群（旧Ⅱ群）1.0718標準病院群（旧Ⅲ群）1.0451 1.0063(データ90件未満)</h3>
+
+<div class="container">
+<div class="panel">
+<h3 id="leftTitle">左側：医療機関を選択してください</h3>
+<select id="leftPref"></select>
+<select id="leftGroup"></select>
+<select id="leftHospital"></select>
+<canvas id="leftChart"></canvas>
+</div>
+
+<div class="panel">
+<h3 id="rightTitle">右側：医療機関を選択してください</h3>
+<select id="rightPref"></select>
+<select id="rightGroup"></select>
+<select id="rightHospital"></select>
+<canvas id="rightChart"></canvas>
+</div>
+</div>
+
+<script>
+let geoData;
+let leftChart = null;
+let rightChart = null;
+let leftValues = [];  // 左側の数値を保持
+let rightValues = []; // 右側の数値を保持
+
+const labels = [
+    "効率性係数", "複雑性係数", "カバー係数", "地域医療係数",
+    "体制評価係数", "定量評価係数（小児）", "定量評価係数（小児以外）",
+    "機能評価係数Ⅱ合計", "救急補正係数"
+];
+
+const prefectureOrder = [
+    "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
+    "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
+    "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県",
+    "岐阜県", "静岡県", "愛知県", "三重県",
+    "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県",
+    "鳥取県", "島根県", "岡山県", "広島県", "山口県",
+    "徳島県", "香川県", "愛媛県", "高知県",
+    "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"
+];
+
+fetch("hospital.geojson")
+.then(res => res.json())
+.then(data => {
+    geoData = data.features;
+    initSelectors("left");
+    initSelectors("right");
+})
+.catch(err => { alert("hospital.geojson が読み込めません。"); });
+
+function initSelectors(side){
+    const prefSelect = document.getElementById(side+"Pref");
+    prefSelect.innerHTML = '<option value="">1. 都道府県選択</option>';
+    const prefectures = [...new Set(geoData.map(f => f.properties.prefecture || f.properties["都道府県"]))];
+    prefectures.sort((a, b) => prefectureOrder.indexOf(a) - prefectureOrder.indexOf(b));
+    prefectures.forEach(p=>{
+        const opt=document.createElement("option");
+        opt.value=p; opt.text=p; prefSelect.appendChild(opt);
+    });
+    prefSelect.onchange = ()=> updateGroups(side);
+}
+
+function updateGroups(side){
+    const pref = document.getElementById(side+"Pref").value;
+    const groupSelect = document.getElementById(side+"Group");
+    groupSelect.innerHTML = '<option value="">2. 医療機関群選択</option>';
+    const groups = [...new Set(
+        geoData.filter(f => (f.properties.prefecture || f.properties["都道府県"]) === pref)
+        .map(f => f.properties.group || f.properties["医療機関群"])
+    )];
+    groups.forEach(g=>{
+        const opt=document.createElement("option");
+        opt.value=g; opt.text=g; groupSelect.appendChild(opt);
+    });
+    document.getElementById(side+"Hospital").innerHTML = '<option value="">3. 医療機関選択</option>';
+    groupSelect.onchange = ()=> updateHospitals(side);
+}
+
+function updateHospitals(side){
+    const pref = document.getElementById(side+"Pref").value;
+    const group = document.getElementById(side+"Group").value;
+    const hospSelect = document.getElementById(side+"Hospital");
+    hospSelect.innerHTML = '<option value="">3. 医療機関選択</option>';
+    const hospitals = geoData.filter(f =>
+        (f.properties.prefecture || f.properties["都道府県"]) === pref &&
+        (f.properties.group || f.properties["医療機関群"]) === group
+    );
+    hospitals.forEach((h, i)=>{
+        const opt=document.createElement("option");
+        opt.value=i; opt.text=h.properties.name || h.properties["医療機関名"];
+        hospSelect.appendChild(opt);
+    });
+    hospSelect.onchange = ()=> drawChart(side, hospitals);
+}
+
+// 左右のスケールを同期させる関数
+function syncScales() {
+    if (!leftChart || !rightChart) return;
+
+    // 両方のデータから最大値を探す
+    const combined = [...leftValues, ...rightValues];
+    const maxVal = Math.max(...combined);
+    
+    // データラベルが切れないよう、最大値に10%の余裕を持たせる
+    const adjustedMax = maxVal * 1.1;
+
+    leftChart.options.scales.x.max = adjustedMax;
+    rightChart.options.scales.x.max = adjustedMax;
+
+    leftChart.update();
+    rightChart.update();
+}
+
+function drawChart(side, hospitals){
+    const index = document.getElementById(side+"Hospital").value;
+    if(index==="") return;
+    const p = hospitals[index].properties;
+    const values = [
+        p.efficiency || p["効率性係数"] || 0,
+        p.complexity || p["複雑性係数"] || 0,
+        p.cover || p["カバー係数"] || 0,
+        p.regional || p["地域医療係数"] || 0,
+        p.system || p["体制評価係数"] || 0,
+        p.pediatric || p["定量評価係数（小児）"] || 0,
+        p.non_pediatric || p["定量評価係数（小児以外）"] || 0,
+        p.function_total || p["機能評価係数Ⅱ合計"] || 0,
+        p.emergency || p["救急補正係数"] || 0
+    ];
+
+    // 現在の値を保持用変数に保存
+    if(side === "left") leftValues = values;
+    else rightValues = values;
+
+    const hospName = p.name || p["医療機関名"];
+    const rankNum = p.rank || p["群別順位"];
+    document.getElementById(side+"Title").innerText = hospName + " (群別順位: " + rankNum + ")";
+
+    if(side==="left" && leftChart) leftChart.destroy();
+    if(side==="right" && rightChart) rightChart.destroy();
+
+    const ctx = document.getElementById(side+"Chart").getContext('2d');
+    const chart = new Chart(ctx, {
+        type: "bar",
+        data: {
+            labels: labels,
+            datasets: [{
+                label: hospName,
+                data: values,
+                backgroundColor: side === "left" ? "rgba(54, 162, 235, 0.6)" : "rgba(255, 99, 132, 0.6)",
+                borderColor: side === "left" ? "rgb(54, 162, 235)" : "rgb(255, 99, 132)",
+                borderWidth: 1
+            }]
+        },
+        plugins: [ChartDataLabels],
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                datalabels: {
+                    anchor: 'end',
+                    align: 'right',
+                    offset: 4,
+                    color: '#000',
+                    font: { weight: 'bold' },
+                    formatter: (val) => val ? val.toFixed(5) : "0"
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    grid: { color: "#eee" }
+                },
+                y: { grid: { display: false } }
+            },
+            layout: { padding: { right: 60 } }
+        }
+    });
+
+    if(side==="left") leftChart = chart;
+    else rightChart = chart;
+
+    // 両方のチャートが存在する場合にスケールを合わせる
+    syncScales();
+}
+</script>
+
+</body>
+</html>
