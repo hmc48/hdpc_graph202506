@@ -1,216 +1,282 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DPC機能評価係数Ⅱ比較</title>
+    <meta charset="UTF-8">
+    <title>救命救急センター充実段階評価の比較</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif; background-color: #f8f9fa; color: #333; margin: 0; padding: 20px; }
+        .container { max-width: 1100px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #1a73e8; margin-bottom: 30px; border-bottom: 2px solid #e8eaed; padding-bottom: 15px; }
+        
+        /* 選択ボックスエリア */
+        .selection-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
+        .selector-group { background: #f1f3f4; padding: 15px; border-radius: 6px; border: 1px solid #dadce0; }
+        .selector-group label { display: block; font-size: 0.85rem; font-weight: bold; margin-bottom: 5px; color: #5f6368; }
+        select { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; margin-bottom: 10px; font-size: 0.9rem; }
+        
+        /* 結果表示エリア */
+        #result-area { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 30px; }
+        .info-card { padding: 12px; border-radius: 6px; border-left: 6px solid #ccc; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.85rem; }
+        .info-card h4 { margin: 0 0 8px 0; color: #1a73e8; font-size: 0.95rem; }
+        .info-card div { margin-bottom: 4px; }
+        .label { color: #70757a; width: 60px; display: inline-block; }
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+        /* 比較テーブルのスタイル */
+        .comparison-container { margin-top: 30px; margin-bottom: 20px; overflow-x: auto; }
+        .comp-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: center; }
+        .comp-table th, .comp-table td { border: 1px solid #dadce0; padding: 8px; }
+        .comp-table th { background-color: #f1f3f4; color: #5f6368; position: sticky; top: 0; }
+        .comp-table .item-label { text-align: left; background-color: #fafafa; font-weight: bold; width: 40%; }
+        .diff-cell { font-weight: bold; background-color: #fffde7; }
+        .neg-value { color: #d93025; } /* マイナスは赤色 */
 
-<style>
-body { font-family: sans-serif; margin:20px; background-color: #f9f9f9; }
-.container { display:flex; gap:30px; }
-.panel { width:50%; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-select { width:100%; padding:10px; margin-bottom:12px; border: 1px solid #ddd; border-radius: 4px; }
-canvas { max-width:100%; height: 500px !important; }
-h2 { text-align: center; color: #333; margin-bottom: 30px; }
-h3 { margin-top: 0; padding-bottom: 10px; border-bottom: 2px solid #eee; font-size: 1.2em; }
-</style>
+        /* グラフエリア */
+        .chart-box { position: relative; height: 1300px; width: 100%; border: 1px solid #e8eaed; padding: 10px; border-radius: 8px; }
+        #loading-msg { text-align: center; color: #666; font-weight: bold; padding: 50px; }
+    </style>
 </head>
-
 <body>
 
-<h2>DPC 機能評価係数Ⅱ及び救急補正係数の比較（2025年版）</h2>
-<h3>基礎係数：大学病院本院群（旧Ⅰ群）1.1182 特定病院群（旧Ⅱ群）1.0718標準病院群（旧Ⅲ群）1.0451 1.0063(データ90件未満)</h3>
-
 <div class="container">
-<div class="panel">
-<h3 id="leftTitle">左側：医療機関を選択してください</h3>
-<select id="leftPref"></select>
-<select id="leftGroup"></select>
-<select id="leftHospital"></select>
-<canvas id="leftChart"></canvas>
-</div>
+    <h1>救命救急センター充実段階評価の比較（2024年1月～12月）</h1>
+    <h3>※ランクは、S、A、B、Cの4種類です。なお、区分に基づき詳細ランクを仮にA-1等と表記しています。項目名一部省略しています。<br>
+　　　　【区分】評価点:94～100点 72～93点 36～71点 0～35点　是正項目数:0、1、2～4、5以上の組み合わせ</h3>
 
-<div class="panel">
-<h3 id="rightTitle">右側：医療機関を選択してください</h3>
-<select id="rightPref"></select>
-<select id="rightGroup"></select>
-<select id="rightHospital"></select>
-<canvas id="rightChart"></canvas>
-</div>
+    <div id="loading-msg">データを読み込み中...</div>
+
+    <div class="selection-container" id="selection-ui" style="display:none;"></div>
+
+    <div id="result-area"></div>
+
+    <div id="comparison-table-area" class="comparison-container"></div>
+
+    <div class="chart-box" id="chart-ui" style="display:none;">
+        <canvas id="comparisonChart"></canvas>
+    </div>
 </div>
 
 <script>
-let geoData;
-let leftChart = null;
-let rightChart = null;
-let leftValues = [];  // 左側の数値を保持
-let rightValues = []; // 右側の数値を保持
-
-const labels = [
-    "効率性係数", "複雑性係数", "カバー係数", "地域医療係数",
-    "体制評価係数", "定量評価係数（小児）", "定量評価係数（小児以外）",
-    "機能評価係数Ⅱ合計", "救急補正係数"
-];
-
-const prefectureOrder = [
-    "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
-    "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
-    "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県",
-    "岐阜県", "静岡県", "愛知県", "三重県",
-    "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県",
-    "鳥取県", "島根県", "岡山県", "広島県", "山口県",
-    "徳島県", "香川県", "愛媛県", "高知県",
-    "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"
-];
-
-fetch("hospital.geojson")
-.then(res => res.json())
-.then(data => {
-    geoData = data.features;
-    initSelectors("left");
-    initSelectors("right");
-})
-.catch(err => { alert("hospital.geojson が読み込めません。"); });
-
-function initSelectors(side){
-    const prefSelect = document.getElementById(side+"Pref");
-    prefSelect.innerHTML = '<option value="">1. 都道府県選択</option>';
-    const prefectures = [...new Set(geoData.map(f => f.properties.prefecture || f.properties["都道府県"]))];
-    prefectures.sort((a, b) => prefectureOrder.indexOf(a) - prefectureOrder.indexOf(b));
-    prefectures.forEach(p=>{
-        const opt=document.createElement("option");
-        opt.value=p; opt.text=p; prefSelect.appendChild(opt);
-    });
-    prefSelect.onchange = ()=> updateGroups(side);
-}
-
-function updateGroups(side){
-    const pref = document.getElementById(side+"Pref").value;
-    const groupSelect = document.getElementById(side+"Group");
-    groupSelect.innerHTML = '<option value="">2. 医療機関群選択</option>';
-    const groups = [...new Set(
-        geoData.filter(f => (f.properties.prefecture || f.properties["都道府県"]) === pref)
-        .map(f => f.properties.group || f.properties["医療機関群"])
-    )];
-    groups.forEach(g=>{
-        const opt=document.createElement("option");
-        opt.value=g; opt.text=g; groupSelect.appendChild(opt);
-    });
-    document.getElementById(side+"Hospital").innerHTML = '<option value="">3. 医療機関選択</option>';
-    groupSelect.onchange = ()=> updateHospitals(side);
-}
-
-function updateHospitals(side){
-    const pref = document.getElementById(side+"Pref").value;
-    const group = document.getElementById(side+"Group").value;
-    const hospSelect = document.getElementById(side+"Hospital");
-    hospSelect.innerHTML = '<option value="">3. 医療機関選択</option>';
-    const hospitals = geoData.filter(f =>
-        (f.properties.prefecture || f.properties["都道府県"]) === pref &&
-        (f.properties.group || f.properties["医療機関群"]) === group
-    );
-    hospitals.forEach((h, i)=>{
-        const opt=document.createElement("option");
-        opt.value=i; opt.text=h.properties.name || h.properties["医療機関名"];
-        hospSelect.appendChild(opt);
-    });
-    hospSelect.onchange = ()=> drawChart(side, hospitals);
-}
-
-// 左右のスケールを同期させる関数
-function syncScales() {
-    if (!leftChart || !rightChart) return;
-
-    // 両方のデータから最大値を探す
-    const combined = [...leftValues, ...rightValues];
-    const maxVal = Math.max(...combined);
+    const GEOJSON_URL = './救命救急センター充実度令和6年.geojson';
+    const MAX_HOSPITALS = 5;
+    const COLORS = ['#4285F4', '#EA4335', '#FBBC05', '#34A853', '#9334E6'];
     
-    // データラベルが切れないよう、最大値に10%の余裕を持たせる
-    const adjustedMax = maxVal * 1.1;
-
-    leftChart.options.scales.x.max = adjustedMax;
-    rightChart.options.scales.x.max = adjustedMax;
-
-    leftChart.update();
-    rightChart.update();
-}
-
-function drawChart(side, hospitals){
-    const index = document.getElementById(side+"Hospital").value;
-    if(index==="") return;
-    const p = hospitals[index].properties;
-    const values = [
-        p.efficiency || p["効率性係数"] || 0,
-        p.complexity || p["複雑性係数"] || 0,
-        p.cover || p["カバー係数"] || 0,
-        p.regional || p["地域医療係数"] || 0,
-        p.system || p["体制評価係数"] || 0,
-        p.pediatric || p["定量評価係数（小児）"] || 0,
-        p.non_pediatric || p["定量評価係数（小児以外）"] || 0,
-        p.function_total || p["機能評価係数Ⅱ合計"] || 0,
-        p.emergency || p["救急補正係数"] || 0
+    const PREF_ORDER = [
+        "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
+        "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
+        "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県",
+        "岐阜県", "静岡県", "愛知県", "三重県",
+        "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県",
+        "鳥取県", "島根県", "岡山県", "広島県", "山口県",
+        "徳島県", "香川県", "愛媛県", "高知県",
+        "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"
     ];
 
-    // 現在の値を保持用変数に保存
-    if(side === "left") leftValues = values;
-    else rightValues = values;
+    let masterData = [];
+    let prefList = [];
+    let itemKeys = [];
+    let myChart = null;
 
-    const hospName = p.name || p["医療機関名"];
-    const rankNum = p.rank || p["群別順位"];
-    document.getElementById(side+"Title").innerText = hospName + " (群別順位: " + rankNum + ")";
+    async function init() {
+        try {
+            const response = await fetch(GEOJSON_URL);
+            if (!response.ok) throw new Error('Network error');
+            const data = await response.json();
+            
+            masterData = data.features.map(f => f.properties);
+            
+            const rawPrefs = [...new Set(masterData.map(d => d.都道府県))];
+            prefList = rawPrefs.sort((a, b) => {
+                let indexA = PREF_ORDER.indexOf(a);
+                let indexB = PREF_ORDER.indexOf(b);
+                if (indexA === -1) indexA = 99;
+                if (indexB === -1) indexB = 99;
+                return indexA - indexB;
+            });
+            
+            itemKeys = Object.keys(masterData[0]).filter(k => k.match(/^\(\d/)).sort((a, b) => {
+                const aNum = parseFloat(a.match(/\d+(\.\d+)?/)[0]);
+                const bNum = parseFloat(b.match(/\d+(\.\d+)?/)[0]);
+                return aNum - bNum;
+            });
 
-    if(side==="left" && leftChart) leftChart.destroy();
-    if(side==="right" && rightChart) rightChart.destroy();
+            document.getElementById('loading-msg').style.display = 'none';
+            document.getElementById('selection-ui').style.display = 'grid';
+            document.getElementById('chart-ui').style.display = 'block';
 
-    const ctx = document.getElementById(side+"Chart").getContext('2d');
-    const chart = new Chart(ctx, {
-        type: "bar",
-        data: {
-            labels: labels,
-            datasets: [{
-                label: hospName,
-                data: values,
-                backgroundColor: side === "left" ? "rgba(54, 162, 235, 0.6)" : "rgba(255, 99, 132, 0.6)",
-                borderColor: side === "left" ? "rgb(54, 162, 235)" : "rgb(255, 99, 132)",
-                borderWidth: 1
-            }]
-        },
-        plugins: [ChartDataLabels],
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                datalabels: {
-                    anchor: 'end',
-                    align: 'right',
-                    offset: 4,
-                    color: '#000',
-                    font: { weight: 'bold' },
-                    formatter: (val) => val ? val.toFixed(5) : "0"
-                }
-            },
-            scales: {
-                x: {
-                    beginAtZero: true,
-                    grid: { color: "#eee" }
-                },
-                y: { grid: { display: false } }
-            },
-            layout: { padding: { right: 60 } }
+            createSelectors();
+        } catch (err) {
+            document.getElementById('loading-msg').innerText = 'エラー：データの読み込みに失敗しました。';
+            console.error(err);
         }
-    });
+    }
 
-    if(side==="left") leftChart = chart;
-    else rightChart = chart;
+    function createSelectors() {
+        const container = document.getElementById('selection-ui');
+        for (let i = 0; i < MAX_HOSPITALS; i++) {
+            const group = document.createElement('div');
+            group.className = 'selector-group';
+            group.innerHTML = `
+                <label>病院選択 ${i + 1}${i < 2 ? (i === 0 ? ' (A)' : ' (B)') : ''}</label>
+                <select id="pref-${i}" onchange="onPrefChange(${i})">
+                    <option value="">都道府県を選択</option>
+                    ${prefList.map(p => `<option value="${p}">${p}</option>`).join('')}
+                </select>
+                <select id="hosp-${i}" onchange="updateView()" disabled>
+                    <option value="">病院を選択</option>
+                </select>
+            `;
+            container.appendChild(group);
+        }
+    }
 
-    // 両方のチャートが存在する場合にスケールを合わせる
-    syncScales();
-}
+    function onPrefChange(index) {
+        const pref = document.getElementById(`pref-${index}`).value;
+        const hospSelect = document.getElementById(`hosp-${index}`);
+        
+        if (!pref) {
+            hospSelect.innerHTML = '<option value="">病院を選択</option>';
+            hospSelect.disabled = true;
+        } else {
+            const filtered = masterData.filter(d => d.都道府県 === pref).sort((a, b) => a.病院名.localeCompare(b.病院名, 'ja'));
+            hospSelect.innerHTML = '<option value="">病院を選択</option>' + 
+                filtered.map(d => `<option value="${d.病院名}">${d.病院名}</option>`).join('');
+            hospSelect.disabled = false;
+        }
+        updateView();
+    }
+
+    function updateView() {
+        const selectedHospitals = [];
+        const resultArea = document.getElementById('result-area');
+        resultArea.innerHTML = '';
+
+        for (let i = 0; i < MAX_HOSPITALS; i++) {
+            const pref = document.getElementById(`pref-${i}`).value;
+            const hospName = document.getElementById(`hosp-${i}`).value;
+
+            if (pref && hospName) {
+                const data = masterData.find(d => d.都道府県 === pref && d.病院名 === hospName);
+                if (data) {
+                    selectedHospitals.push({ data, color: COLORS[i], id: i });
+                    resultArea.innerHTML += `
+                        <div class="info-card" style="border-left-color: ${COLORS[i]}">
+                            <h4>${data.病院名}</h4>
+                            <div><span class="label">種類:</span> ${data.種類 || '-'}</div>
+                            <div><span class="label">評価点:</span> <b>${data.評価点 || '0'}</b> 点</div>
+                            <div><span class="label">詳細ランク:</span> <b>${data.詳細ランク || '-'}</b></div>
+                        </div>
+                    `;
+                }
+            }
+        }
+        
+        // 比較テーブルの描画（病院1と病院2が揃っている場合）
+        drawComparisonTable(selectedHospitals);
+        // グラフの描画
+        drawChart(selectedHospitals);
+    }
+
+    // 差分の数値を整形する関数
+    function formatDiff(valA, valB) {
+        const a = parseFloat(valA) || 0;
+        const b = parseFloat(valB) || 0;
+        const diff = a - b;
+        
+        // 浮動小数点の誤差を考慮し、小数点第5位までで丸める
+        let formatted = Math.round(diff * 100000) / 100000;
+        
+        if (diff < 0) {
+            // マイナスの場合は「△」を付け、絶対値を表示
+            return `<span class="neg-value">△${Math.abs(formatted)}</span>`;
+        } else if (diff > 0) {
+            return `+${formatted}`;
+        }
+        return "0";
+    }
+
+    function drawComparisonTable(hospitals) {
+        const tableArea = document.getElementById('comparison-table-area');
+        
+        // 病院1 (A) と 病院2 (B) が両方選択されているか確認
+        const hospA = hospitals.find(h => h.id === 0);
+        const hospB = hospitals.find(h => h.id === 1);
+
+        if (!hospA || !hospB) {
+            tableArea.innerHTML = '';
+            return;
+        }
+
+        let html = `
+            <table class="comp-table">
+                <thead>
+                    <tr>
+                        <th>評価項目</th>
+                        <th>${hospA.data.病院名} (A)</th>
+                        <th class="diff-cell">差(A-B)</th>
+                        <th>${hospB.data.病院名} (B)</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        itemKeys.forEach(key => {
+            const valA = hospA.data[key] || 0;
+            const valB = hospB.data[key] || 0;
+            html += `
+                <tr>
+                    <td class="item-label">${key}</td>
+                    <td>${valA}</td>
+                    <td class="diff-cell">${formatDiff(valA, valB)}</td>
+                    <td>${valB}</td>
+                </tr>
+            `;
+        });
+
+        html += `</tbody></table>`;
+        tableArea.innerHTML = html;
+    }
+
+    function drawChart(hospitals) {
+        const ctx = document.getElementById('comparisonChart').getContext('2d');
+        if (myChart) myChart.destroy();
+        if (hospitals.length === 0) return;
+
+        const datasets = hospitals.map(h => ({
+            label: h.data.病院名,
+            data: itemKeys.map(k => h.data[k] || 0),
+            backgroundColor: h.color,
+            borderWidth: 0
+        }));
+
+        myChart = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: itemKeys, datasets: datasets },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        max: 4,
+                        ticks: {
+                            stepSize: 1,
+                            precision: 0
+                       },
+                       title: { display: true, text: 'スコア' }
+                    },
+                    y: { ticks: { font: { size: 10 }, autoSkip: false } }
+                },
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: { mode: 'index', intersect: false }
+                }
+            }
+        });
+    }
+
+    window.onload = init;
 </script>
 
 </body>
