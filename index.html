@@ -192,7 +192,7 @@ function updateDataAndDraw(side, hospitals){
 
     const hospName = p.name || p["医療機関名"];
     const rankNum = p.rank || p["群別順位"];
-    document.getElementById(side+"Title").innerText = (side==="left"?"A: ":"B: ") + hospName + " ("群別順位 + rankNum + "位)";
+    document.getElementById(side+"Title").innerText = (side==="left"?"A: ":"B: ") + hospName + " (群別順位" + rankNum + "位)";
 
     drawBaseChart(side, hospName, vals);
     syncScales();
