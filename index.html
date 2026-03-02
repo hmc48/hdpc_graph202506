@@ -10,15 +10,51 @@
 
 <style>
 body { font-family: sans-serif; margin:20px; background-color: #f9f9f9; }
-.container { display: flex; gap: 15px; justify-content: center; }
-/* 3つのパネルを均等に配置 */
-.panel { width: 33%; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-.diff-panel { background: #fffdf0; border: 1px solid #ffeeba; } /* 差分パネルを目立たせる */
+.container { display: flex; gap: 10px; justify-content: center; align-items: flex-start; }
 
-select { width:100%; padding:8px; margin-bottom:10px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; }
-canvas { max-width:100%; height: 500px !important; }
+/* 各パネルの幅を調整 */
+.panel { width: 33%; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); box-sizing: border-box;}
+.diff-panel { background: #fffdf0; border: 1px solid #ffeeba; }
+
+/* タイトル高さを固定してズレを防止 */
+h3 { 
+    margin-top: 0; 
+    padding-bottom: 8px; 
+    border-bottom: 2px solid #eee; 
+    font-size: 1.05em; 
+    text-align: center; 
+    height: 3.5em; /* 2行分確保 */
+    display: flex; 
+    align-items: center; 
+    justify-content: center;
+}
+
+/* セレクトボックスのスタイル */
+select { 
+    width: 100%; 
+    height: 38px; 
+    padding: 5px; 
+    margin-bottom: 10px; 
+    border: 1px solid #ddd; 
+    border-radius: 4px; 
+    font-size: 0.9em; 
+    box-sizing: border-box;
+}
+
+/* 中央パネル用のスペーサー（不可視のセレクトボックスと同じ高さにする） */
+.spacer {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* グラフエリアの高さ固定 */
+.chart-container {
+    position: relative;
+    height: 550px;
+    width: 100%;
+}
+
 h2 { text-align: center; color: #333; margin-bottom: 20px; }
-h3 { margin-top: 0; padding-bottom: 8px; border-bottom: 2px solid #eee; font-size: 1.1em; text-align: center; min-height: 3em; display: flex; align-items: center; justify-content: center;}
 </style>
 </head>
 
@@ -32,12 +68,17 @@ h3 { margin-top: 0; padding-bottom: 8px; border-bottom: 2px solid #eee; font-siz
         <select id="leftPref"></select>
         <select id="leftGroup"></select>
         <select id="leftHospital"></select>
-        <canvas id="leftChart"></canvas>
+        <div class="chart-container">
+            <canvas id="leftChart"></canvas>
+        </div>
     </div>
 
     <div class="panel diff-panel">
-        <h3 id="diffTitle">差(A - B)</h3>
-        <div style="height: 84px;"></div> <canvas id="diffChart"></canvas>
+        <h3 id="diffTitle">差 (A - B)</h3>
+        <div class="spacer"><select></select><select></select><select></select></div>
+        <div class="chart-container">
+            <canvas id="diffChart"></canvas>
+        </div>
     </div>
 
     <div class="panel">
@@ -45,7 +86,9 @@ h3 { margin-top: 0; padding-bottom: 8px; border-bottom: 2px solid #eee; font-siz
         <select id="rightPref"></select>
         <select id="rightGroup"></select>
         <select id="rightHospital"></select>
-        <canvas id="rightChart"></canvas>
+        <div class="chart-container">
+            <canvas id="rightChart"></canvas>
+        </div>
     </div>
 </div>
 
@@ -78,7 +121,7 @@ fetch("hospital.geojson")
     geoData = data.features;
     initSelectors("left");
     initSelectors("right");
-    drawDiffChart(); // 初回空表示
+    drawDiffChart(); 
 })
 .catch(err => { alert("hospital.geojson が読み込めません。"); });
 
@@ -148,11 +191,11 @@ function updateDataAndDraw(side, hospitals){
 
     const hospName = p.name || p["医療機関名"];
     const rankNum = p.rank || p["群別順位"];
-    document.getElementById(side+"Title").innerText = (side==="left"?"A: ":"B: ") + hospName + "\n(群別順位: " + rankNum + ")";
+    document.getElementById(side+"Title").innerText = (side==="left"?"A: ":"B: ") + hospName + " (" + rankNum + "位)";
 
     drawBaseChart(side, hospName, vals);
     syncScales();
-    drawDiffChart(); // 左右どちらかが変わるたびに差分を再計算
+    drawDiffChart();
 }
 
 function drawBaseChart(side, name, data){
@@ -188,7 +231,13 @@ function drawBaseChart(side, name, data){
             },
             scales: {
                 x: { beginAtZero: true },
-                y: { display: side === "left" } // 左側だけ軸ラベルを表示して中央と右はスッキリさせる
+                y: { 
+                    display: true,
+                    ticks: {
+                        display: side === "left" // 左側以外は文字を消すが、軸のスペースは維持する
+                    },
+                    grid: { display: false }
+                }
             },
             layout: { padding: { right: 50 } }
         }
@@ -200,11 +249,7 @@ function drawBaseChart(side, name, data){
 
 function drawDiffChart(){
     if(diffChart) diffChart.destroy();
-    
-    // 差分計算 (A - B)
     const diffData = leftValues.map((v, i) => v - rightValues[i]);
-    
-    // マイナスなら赤、プラスなら青に色分け
     const colors = diffData.map(v => v >= 0 ? "rgba(54, 162, 235, 0.5)" : "rgba(255, 99, 132, 0.5)");
     const borderColors = diffData.map(v => v >= 0 ? "rgb(54, 162, 235)" : "rgb(255, 99, 132)");
 
@@ -240,13 +285,14 @@ function drawDiffChart(){
                 }
             },
             scales: {
-                x: {
-                    // 差分グラフなので中央0で左右に振れるように
-                    grid: { color: "#ccc" }
-                },
-                y: { display: false } // 中央はラベル不要
+                x: { grid: { color: "#eee" } },
+                y: { 
+                    display: true, 
+                    ticks: { display: false }, // 差分グラフもラベル文字は隠す
+                    grid: { display: false }
+                }
             },
-            layout: { padding: { left: 40, right: 40 } }
+            layout: { padding: { left: 10, right: 40 } }
         }
     });
 }
